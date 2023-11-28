@@ -1,113 +1,295 @@
-import Image from 'next/image'
+'use client'
+
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faSpotify } from '@fortawesome/free-brands-svg-icons'
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import html2canvas from 'html2canvas';
+
+import axios from 'axios';
+
+import { createClient } from '@supabase/supabase-js'
+const supabaseUrl = "https://kqavzuydlsgzmrixmoxm.supabase.co"
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxYXZ6dXlkbHNnem1yaXhtb3htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDAwODAyNzMsImV4cCI6MjAxNTY1NjI3M30.-RjsZdFxzaPLceW5jfUpGsDqfUN8r0ApBR1lbiXrMY4"
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.js</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+  const [isSigned, setIsSigned] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [spotifyUser, setSpotifyUser] = useState(null);
+  const [access, setAccess] = useState(null);
+  const [songs, setSongs] = useState(null);
+  const [artists, setArtists] = useState(null);
+  const [url, setURL] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data, error
+    }) => {
+      // console.log(data?.session.access_token);
+      if(data?.session?.access_token)
+      {
+        getSpotifyUserInfo();
+
+        if(data?.session?.provider_token === null)
+        {
+          signInWithSpotify();
+        }
+
+        setAccess(data?.session?.provider_token);
+      } else {
+        setIsSigned(false);
+      }
+    })
+
+    const subscription = supabase.auth.onAuthStateChange((event => {
+      if (event === "SIGNED_OUT") {
+        setIsSigned(false);
+      }
+      return subscription.data.subscription.unsubscribe();
+    }))
+
+  })
+
+  function truncateText(text, maxLength) {
+    return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+  }
+  
+
+  async function getSpotifyUserInfo() {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    setSpotifyUser(user);
+    setIsSigned(true);
+
+  }
+
+  async function signInWithSpotify() {
+
+    const { outError } = await supabase.auth.signOut();
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'spotify',
+      options: {
+        scopes: 'user-top-read'
+      }
+    })
+    getSpotifyUserInfo();
+
+    setAccess(data.session.provider_token);
+
+  }
+
+  async function getTopSongs() {
+
+    setIsGenerating(true);
+
+    //Need to put all of this server side so I dont get fucked by a $5000 bill from OpenAI
+
+    const accessToken = access; // Replace with the actual Spotify access token
+
+    console.log(access);
+
+    const serverUrl = "http://localhost:8082/api/images/trackGenerate";
+
+    const config2 = {
+      headers: {
+        'provider': `Bearer ${accessToken}`,
+        'authorization': `Bearer ${accessToken};`
+      }
+    }
+
+    axios.get(serverUrl, config2)
+     .then(response => {
+      console.log("worked", response.data);
+      setArtists(response.data.artists);
+      setSongs(response.data.songs);
+      setURL(response.data.image_response[0].url);
+     })
+     .catch(error => {
+      console.log("there was an error")
+      console.error("Error", error);
+     });
+  }
+
+  function WrappedAIContent({url, isGenerating, songs, artists, spotifyUser})
+  {
+
+    const [downloaded, setDownloaded] = useState(false);
+
+    const handleDownload = async () => {
+      try {
+        const canvas = await html2canvas(document.getElementById('wrapped-content'));
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = 'wrappedAIContent.png';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setDownloaded(true);
+      } catch (error) {
+        console.error('Error capturing screenshot:', error);
+      }
+    };
+
+
+    if(url)
+    {
+      return (
+        <div className='bg-black w-full h-[100vh] flex flex-col items-center justify-center'>
+          <div id = "wrapped-content" className='border-[#1ED760] border w-[360px] h-[640px] bg-black md:mt-0 mt-2'>
+            <div className='w-full h-[33.33px] ml-2 items-center flex'>
+              <text className='font-thin text-sm text-white'>www.wrapped</text>
+              <text className='font-thin text-sm text-[#1ED760]'>ai</text>
+              <text className='font-thin text-sm text-white'>.lol</text>
+            </div>
+            <div className = "w-full bg-black h-[360px] items-center justify-center flex">
+              <Image src = {url} alt = "AI Generated Image" width={"360"} height={"360"}/>
+            </div>
+            <div className='w-full h-[200px]'>
+              <div className='flex flex-row w-full'>
+                <text className='font-semibold text-md ml-2'>{truncateText(spotifyUser.user_metadata.full_name)}</text>
+                <text className='font-semibold text-md'>&apos;s 2023 Top Songs</text>
+              </div>
+              <div className='ml-2 flex flex-col'>
+                {songs.map((song, index) => (
+                  <div className='flex flex-row' key={index}>
+                    <text className='font-light text-white'>{truncateText(song, 20)}</text>
+                    <text className='font-light ml-1 text-white'>by</text>
+                    <text className='font-bold text-[#1ED760] ml-1'>{truncateText(artists[index], 20)}</text>
+                  </div>
+                ))}
+              </div>
+              <div className='flex md:mt-12 mt-8 justify-end'>
+                <div className='w-[70%] items-end flex'>
+                  <text className='ml-2 font-light text-white'>built by @siddharth_balaji</text>
+                </div>
+                <div className='flex flex-col items-end mr-1'>
+                  <text className='font-light text-white'>Generated by</text>
+                  <div className='ml-2'>
+                    <text className='font-semibold text-white'>Wrapped</text>
+                    <text className='font-semibold text-[#1ED760]'>AI</text>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button className="bg-[#1ED760] rounded-full w-40 h-16 flex items-center justify-center mt-8 mr-4 border-[#1ED760] border-2 hover:bg-[#F4F4FF] flex-col">
+            <text className="text-black font-light">Regenerate</text>
+            <text className='text-black font-light text-xs'>3 left</text>
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled = {downloaded}
+            className = "bg-[#1ED760] rounded-full w-40 h-16 flex items-center justify-center mt-10 mr-4 border-[#1ED760] border-2 hover:bg-[#F4F4FF]"
           >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+            <text className="text-black font-light">{downloaded ? 'Downloaded' : 'Download'}</text>
+          </button>
         </div>
+      )
+    } else {
+      return (
+        <div className='bg-black w-full h-[90%] mt-[25%] flex flex-col items-center justify-center'>
+          <text className='text-[#1ed760] font-light text-lg'>generating your custom image...</text>
+        </div>
+      )
+    }
+  }
+  
+
+
+  return (
+    <body className = "h-screen w-full flex items-center justify-center bg-black">
+      <div className = "flex flex-col h-full w-full bg-black">
+        <div className = "flex flex-row justify-end h-auto bg-black">
+
+        {!isSigned ? 
+          <>
+            <button
+              className="bg-[#1ED760] rounded-full w-40 h-16 flex items-center justify-center mt-8 mr-4 border-[#1ED760] border-2 hover:bg-[#F4F4FF]"
+              onClick={async () => {
+                try {
+                  await signInWithSpotify();
+                } catch (error) {
+                  console.error('Error signing in with Spotify:', error);
+                }
+              }}
+            >
+              <text className="text-black font-light pr-2">
+                Connect your
+              </text>
+              <FontAwesomeIcon icon={faSpotify} style={{ color: "#000000" }} className="w-8 h-12" />
+            </button>
+          </>
+          :
+          <>
+            <button className='bg-[#1ED760] rounded-full w-16 h-16 flex items-center justify-center mt-8 mr-4 border-[#1ED760] border-2 justify-center"'>
+              <Image className='text-black rounded-full' src = {spotifyUser.user_metadata.avatar_url} alt = "Spotify User" width={"56"} height={"56"}/>
+            </button>
+          </>
+        }
+        </div>
+        {!isGenerating ? 
+        (
+          <>
+            <div className="flex flex-col h-[80vh] w-full items-center justify-center overflow-hidden">
+              <text className="text-white md:text-[80px] text-[60px] font-bold">Welcome</text>
+              <text className="text-white md:text-[48px] text-[36px] font-bold">to</text>
+              <div className = "flex flex-row w-full items-center justify-center">
+                <text className="text-white md:text-[80px] text-[60px] font-bold">Wrapped</text> 
+                <text className="text-[#1ED760] md:text-[80px] text-[60px] font-bold">AI</text>
+              </div>
+              <div className='flex items-center justify-center'>
+                <text className='text-white md:text-[18px] text-[12px] font-light'>Get an AI generated image for 2023&apos;s Spotify Wrapped in seconds</text>
+              </div>
+              {isSigned ?
+               (
+                <>
+                  <button className="bg-[#1ED760] rounded-full w-40 h-16 flex items-center justify-center mt-8 mr-4 border-[#1ED760] border-2 hover:bg-[#F4F4FF]" onClick={async () => {
+                        try {
+                          await getTopSongs();
+                        } catch (error) {
+                          console.error('Error getting songs:', error);
+                        }
+                      }}>
+                    <text className="text-black font-light">Generate</text>
+                  </button>
+                </>
+               ) : 
+               (
+                <>
+                  <button className="bg-[#1ED760] rounded-full w-40 h-16 flex items-center justify-center mt-8 mr-4 border-[#1ED760] border-2 hover:bg-[#F4F4FF]" onClick={async () => {
+                try {
+                  await signInWithSpotify();
+                } catch (error) {
+                  console.error('Error signing in with Spotify:', error);
+                }
+              }}>
+                    <text className="text-black font-light">Try Now</text>
+                  </button>
+                </>
+               )
+              }
+            </div>
+          </>
+        )
+        :
+        (
+          <div className='flex flex-col items-center justify-center'>
+            <WrappedAIContent
+              url={url}
+              isGenerating={isGenerating}
+              songs={songs}
+              artists={artists}
+              spotifyUser={spotifyUser}
+            />
+          </div>
+        )
+        }
       </div>
-
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800 hover:dark:bg-opacity-30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+    </body>
+  
   )
 }
+
